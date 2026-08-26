@@ -1,0 +1,13 @@
+project: savantenvs/gnupg
+target: fuzz_decrypt
+
+# Starter seeds: OpenPGP sample data shipped in gnupg's own tests/openpgp/ tree, copied under
+# mayhem/fuzz_decrypt/testsuite/. Two-entry form: the server-accumulated tar (so the corpus grows across
+# runs) plus the per-target local seeds.
+testsuite:
+  - https://$MAYHEM_DOMAIN/$MAYHEM_PROJECT/$MAYHEM_TARGET/testsuite.tar
+  - file://mayhem/fuzz_decrypt/testsuite
+
+cmds:
+  - cmd: /mayhem/fuzz_decrypt
+    libfuzzer: true

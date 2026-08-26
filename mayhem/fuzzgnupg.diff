@@ -1,0 +1,115 @@
+--- a/g10/armor.c	2026-07-10 11:53:43.000000000 +0000
++++ b/g10/armor.c	2026-07-13 12:58:54.572835668 +0000
+@@ -322,7 +322,9 @@
+ invalid_armor(void)
+ {
+     write_status(STATUS_BADARMOR);
++#ifndef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
+     g10_exit(1); /* stop here */
++#endif
+ }
+ 
+ 
+--- a/g10/call-dirmngr.h	2026-07-10 11:53:43.000000000 +0000
++++ b/g10/call-dirmngr.h	2026-07-13 12:58:54.572835668 +0000
+@@ -19,6 +19,8 @@
+ #ifndef GNUPG_G10_CALL_DIRMNGR_H
+ #define GNUPG_G10_CALL_DIRMNGR_H
+ 
++#include "options.h"
++
+ void gpg_dirmngr_deinit_session_data (ctrl_t ctrl);
+ 
+ gpg_error_t gpg_dirmngr_ks_list (ctrl_t ctrl, char **r_keyserver);
+--- a/g10/compress-bz2.c	2026-07-10 11:53:43.000000000 +0000
++++ b/g10/compress-bz2.c	2026-07-13 12:58:54.572835668 +0000
+@@ -174,7 +174,12 @@
+         {
+           log_error ("bz2lib inflate problem: rc=%d\n", zrc );
+           write_status_error ("bzip2.inflate", gpg_error (GPG_ERR_BAD_DATA));
++#ifdef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
++          rc = GPG_ERR_BAD_DATA;
++          break;
++#else
+           g10_exit (2);
++#endif
+         }
+       else if (zrc == BZ_OK && eofseen
+                && !bzs->avail_in && bzs->avail_out > 0)
+--- a/g10/compress.c	2026-07-10 11:53:43.000000000 +0000
++++ b/g10/compress.c	2026-07-13 12:58:54.572835668 +0000
+@@ -209,7 +209,12 @@
+ 	    else
+ 		log_error ("zlib inflate problem: rc=%d\n", zrc );
+             write_status_error ("zlib.inflate", gpg_error (GPG_ERR_BAD_DATA));
++#ifdef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
++            rc = -1;
++            zrc = Z_BUF_ERROR;
++#else
+             g10_exit (2);
++#endif
+ 	}
+     } while (zs->avail_out && zrc != Z_STREAM_END && zrc != Z_BUF_ERROR
+              && !leave);
+--- a/g10/parse-packet.c	2026-07-10 11:53:43.000000000 +0000
++++ b/g10/parse-packet.c	2026-07-13 13:19:53.232895685 +0000
+@@ -332,6 +332,10 @@
+     }
+ 
+   nbytes = (nbits + 7) / 8;
++#ifdef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
++  if (!nbytes)
++    goto leave;
++#endif
+   buf = secure ? gcry_xmalloc_secure (nbytes) : gcry_xmalloc (nbytes);
+   p = buf;
+   for (i = 0; i < nbytes; i++)
+@@ -916,7 +920,12 @@
+        * the uncompressing layer - in some error cases it just loops
+        * and spits out 0xff bytes. */
+       log_error ("%s: garbled packet detected\n", iobuf_where (inp));
++#ifdef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
++      rc = gpg_error (GPG_ERR_INV_PACKET);
++      goto leave;
++#else
+       g10_exit (2);
++#endif
+     }
+ 
+   if (out && pkttype)
+--- a/g10/plaintext.c	2026-07-10 11:53:43.000000000 +0000
++++ b/g10/plaintext.c	2026-07-13 12:58:54.572835668 +0000
+@@ -725,10 +725,16 @@
+ 
+   if (!fp)
+     {
++#ifdef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
++        errno = ENOENT;
++        rc = gpg_error_from_syserror ();
++        goto leave;
++#else
+       if (opt.verbose)
+ 	log_info (_("reading stdin ...\n"));
+       fp = iobuf_open (NULL);
+       log_assert (fp);
++#endif
+     }
+   do_hash (md, md2, fp, textmode);
+   iobuf_close (fp);
+--- a/g10/sig-check.c	2026-07-10 11:53:43.000000000 +0000
++++ b/g10/sig-check.c	2026-07-13 12:58:54.572835668 +0000
+@@ -792,7 +792,14 @@
+           gcry_md_hd_t md;
+ 
+           if (gcry_md_open (&md, sig->digest_algo, 0))
++#ifdef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
++            {
++              ctrl->in_check_revocation_keys = 0;
++              return gpg_error (GPG_ERR_DIGEST_ALGO);
++            }
++#else
+             BUG ();
++#endif
+           hash_public_key (md, pk);
+           /* Note: check_signature only checks that the signature
+            * is good.  It does not fail if the key is revoked.  */
